@@ -1,4 +1,4 @@
-﻿<%@ CodeTemplate Src="..\..\..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Language="C#" TargetLanguage="C#" Description="Template description here." Debug="True"  ResponseEncoding="UTF-8"%>
+﻿<%@ CodeTemplate Src="..\..\..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Language="C#" TargetLanguage="C#" Description="Template description here." Debug="True"  ResponseEncoding="UTF-8" NoWarn="0108,0618,1572,1573,1574,0162,2002"%>
 <%@ Assembly Name="SchemaExplorer" %>
 <%@ Assembly Name="System.Design" %>
 <%@ Import Namespace="SchemaExplorer" %>
@@ -7,7 +7,6 @@
 
 <%@ Property Name="IncludeCustoms" Type="System.Boolean" Default="True" Category="Options" Description="If true customs stored procedures will be generated as functions." %>
 <%@ Property Name="CustomNonMatchingReturnType" Type="CustomNonMatchingReturnType" Default="DataSet" Category="Options" Description="When using custom stored procedures, if the returned rows do not match the fields in an entity, a DataSet or IDataReader will be returned. Choose One.  This is useful if you've returned more than one resultset in a custom procedure; you can use a ConvertToDataSet(IDataReader) method in the Utility class to convert that to a DataSet." %>
-<%@ Property Name="ProcedurePrefix" Optional="True" Type="System.String" Category="Style" Description="Prefix for Strored Procedures" %>
 <%@ Property Name="IncludeGetList" Type="System.Boolean" Default="True" Category="Options" Description="If true getlist functions will be generated." %>
 <%@ Property Name="IncludeGetListByIX" Type="System.Boolean" Default="True" Category="Options" Description="If true getlist functions will be generated." %>
 
@@ -20,11 +19,11 @@
 	// Collection of all columns in the table.
 	ViewColumnSchemaCollection cols = SourceView.Columns;
 	
-	string className = GetClassName(SourceView.Name);
-	string collectionClassName = GetViewCollectionClassName(SourceView.Name);
+	string className = GetClassName(SourceView);
+	string collectionClassName = GetClassName(SourceView, ClassNameFormat.ViewCollection);
 	string collectionClassNameForComment = collectionClassName.Replace("<", "&lt;").Replace(">", "&gt;");
 	
-	string baseProviderName = GetProviderBaseName(SourceView.Name);
+	string baseProviderName = GetClassName(SourceView, ClassNameFormat.ProviderBase);
 	
 	// this array store each Get BY MemberColumns in order to avoid to create doublon Get methods
 	System.Collections.ArrayList getbyKeys = new System.Collections.ArrayList();
@@ -97,7 +96,7 @@ namespace <%=DALNameSpace%>.Bases
 		/// <returns>A <see cref="<%=returnTypeForComment%>"/> instance.</returns><%}%>
 		public <%=returnType%> <%=methodName%>(TransactionManager transactionManager<%=TransformStoredProcedureInputsToMethod(true, command.InputParameters)%>)
 		{
-			return <%=methodName%>(0, int.MaxValue <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters)%>);
+			<%= returnKeyword %> <%=methodName%>(transactionManager, 0, int.MaxValue <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters)%>);
 		}
 		
 		/// <summary>
@@ -200,11 +199,16 @@ namespace <%=DALNameSpace%>.Bases
 					{
 						entity = new <%= className %>();
 					}
+					
+					entity.SuppressEntityEvents = true;
+
 					<%for (int x=0; x < cols.Count;x++) { %>
 					<%= GetObjectPropertySetExpression(cols[x], "reader", "entity", 4) %>;
 					//<%= GetObjectPropertyAccessor(cols[x],"entity")%> = (Convert.IsDBNull(reader["<%=cols[x].Name%>"]))?<%= GetCSDefaultByType(cols[x])%>:(<%=GetCSType(cols[x])%>)reader["<%=cols[x].Name%>"];
 					<% } //end for %>
 					entity.AcceptChanges();
+					entity.SuppressEntityEvents = false;
+					
 					rows.Add(entity);
 					pageLength -= 1;
 				}
@@ -318,4 +322,26 @@ namespace <%=DALNameSpace%>.Bases
 	}
 
 	#endregion <%= className %>ParameterBuilder
+	
+	#region <%= className %>SortBuilder
+    
+    /// <summary>
+    /// A strongly-typed instance of the <see cref="SqlSortBuilder&lt;EntityColumn&gt;"/> class
+	/// that is used exclusively with a <see cref="<%= className %>"/> object.
+    /// </summary>
+    [CLSCompliant(true)]
+    public class <%= className %>SortBuilder : SqlSortBuilder<<%= className %>Column>
+    {
+		#region Constructors
+
+		/// <summary>
+		/// Initializes a new instance of the <%= className %>SqlSortBuilder class.
+		/// </summary>
+		public <%= className %>SortBuilder() : base() { }
+
+		#endregion Constructors
+
+    }    
+    #endregion <%= className %>SortBuilder
+
 } // end namespace

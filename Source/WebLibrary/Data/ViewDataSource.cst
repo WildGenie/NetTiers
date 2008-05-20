@@ -1,4 +1,4 @@
-﻿<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Debug="False" Description="Generates a data source control for each view." ResponseEncoding="UTF-8"%>
+﻿<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Debug="False" Description="Generates a data source control for each view." ResponseEncoding="UTF-8" NoWarn="0108,0618,1572,1573,1574,0162,2002" %>
 <%@ Property Name="BLLNameSpace" Optional="False" Type="System.String" Category="Style" Description="Object Namespace." %>
 <%@ Property Name="DALNameSpace" Optional="False" Type="System.String" Category="Style" Description="DAL Namespace." %>
 <%@ Property Name="WebNameSpace" Optional="False" Type="System.String" Category="Style" Description="Web Namespace." %>
@@ -30,14 +30,14 @@
 	}
 	
 	string viewName = SourceView.Name;
-	string className = GetClassName(viewName);
-	string providerName = GetProviderName(viewName);
-	string providerBaseName = GetProviderBaseName(viewName);
+	string className = GetClassName(SourceView);
+	string providerName = GetClassName(SourceView, ClassNameFormat.Provider);
+	string providerBaseName = GetClassName(SourceView, ClassNameFormat.ProviderBase);
 	string providerObject = "DataRepository." + providerName;
 	
 	if ( IsServiceLayer )
 	{
-		providerBaseName = GetServiceClassName(viewName);
+		providerBaseName = GetClassName(SourceView, ClassNameFormat.Service);
 		providerObject = String.Format("new {0}()", providerBaseName);
 	}
 	
@@ -50,13 +50,13 @@
 	
 	if ( IncludeGetList )
 	{
-		methodNames.Add("Get");
-		methodNames.Add("GetPaged");
-		methodNames.Add("GetAll");
+		methodNames.Add(MethodNames.Get);
+		methodNames.Add(MethodNames.GetPaged);
+		methodNames.Add(MethodNames.GetAll);
 	}
 	if ( IncludeFind )
 	{
-		methodNames.Add("Find");
+		methodNames.Add(MethodNames.Find);
 	}
 	if ( IncludeCustoms )
 	{
@@ -132,7 +132,7 @@ namespace <%= WebNameSpace %>.Data
 		{
 			get
 			{
-				<%= className %>SelectMethod selectMethod = <% if ( IncludeGetList ) { %><%= className %>SelectMethod.GetAll<% } else { %>default(<%= className %>SelectMethod)<% } %>;
+				<%= className %>SelectMethod selectMethod = <% if ( IncludeGetList ) { %><%= className %>SelectMethod.<%= MethodNames.GetAll %><% } else { %>default(<%= className %>SelectMethod)<% } %>;
 				Object method = ViewState["SelectMethod"];
 				if ( method != null )
 				{
@@ -249,25 +249,25 @@ namespace <%= WebNameSpace %>.Data
 				if ( IncludeGetList )
 				{
 				%>
-				case <%= className %>SelectMethod.Get:
-					results = <%= providerName %>.Get(<%= TransactionManager %>WhereClause, OrderBy, <%= pagingProperty %>, PageSize, out count);
+				case <%= className %>SelectMethod.<%= MethodNames.Get %>:
+					results = <%= providerName %>.<%= MethodNames.Get %>(<%= TransactionManager %>WhereClause, OrderBy, <%= pagingProperty %>, PageSize, out count);
                     break;
-				case <%= className %>SelectMethod.GetPaged:
-					results = <%= providerName %>.GetPaged(<%= TransactionManager %>WhereClause, OrderBy, <%= pagingProperty %>, PageSize, out count);
+				case <%= className %>SelectMethod.<%= MethodNames.GetPaged %>:
+					results = <%= providerName %>.<%= MethodNames.GetPaged %>(<%= TransactionManager %>WhereClause, OrderBy, <%= pagingProperty %>, PageSize, out count);
 					break;
-				case <%= className %>SelectMethod.GetAll:
-					results = <%= providerName %>.GetAll(<%= TransactionManager %>StartIndex, PageSize, out count);
+				case <%= className %>SelectMethod.<%= MethodNames.GetAll %>:
+					results = <%= providerName %>.<%= MethodNames.GetAll %>(<%= TransactionManager %>StartIndex, PageSize, out count);
                     break;
 				<% } // end if ( IncludeGetList ) { %>
 				<% if ( IncludeFind ) { %>
-				case <%= className %>SelectMethod.Find:
-					results = <%= providerName %>.Find(<%= TransactionManager %>FilterParameters, OrderBy, StartIndex, PageSize, out count);
+				case <%= className %>SelectMethod.<%= MethodNames.Find %>:
+					results = <%= providerName %>.<%= MethodNames.Find %>(<%= TransactionManager %>FilterParameters, OrderBy, StartIndex, PageSize, out count);
                     break;
 				<% } // end if ( IncludeFind ) {
 				if ( IncludeCustoms )
 				{
 					Response.Write("\t\t\t\t// Custom" + Environment.NewLine);
-					Response.Write(WriteCustomSelectStatements(viewName, methods, IsServiceLayer));
+					Response.Write(WriteCustomSelectStatements(SourceView, methods, IsServiceLayer));
 				}
 				%>
 				default:
@@ -404,6 +404,19 @@ namespace <%= WebNameSpace %>.Data
 	}
 
 	#endregion <%= className %>Filter
+
+	#region <%= className %>ExpressionBuilder
+	
+	/// <summary>
+	/// A strongly-typed instance of the <see cref="SqlExpressionBuilder&lt;EntityColumn&gt;"/> class
+	/// that is used exclusively with a <see cref="<%= className %>"/> object.
+	/// </summary>
+	[CLSCompliant(true)]
+	public class <%= className %>ExpressionBuilder : SqlExpressionBuilder<<%= className %>Column>
+	{
+	}
+	
+	#endregion <%= className %>ExpressionBuilder		
 }
 
 <script runat="template">
@@ -425,7 +438,7 @@ private string WriteParameterDeclarations(IDictionary procs)
 			{
 				foreach ( ParameterSchema param in command.InputParameters )
 				{
-					string unique = GetCustomVariableName(param.Name + GetPropertyName(command.Name));
+					string unique = GetCustomVariableName(param.Name , command);
 					if( !columns.Contains(unique) )
 					{
 						columns.Add(unique);
@@ -435,7 +448,7 @@ private string WriteParameterDeclarations(IDictionary procs)
 				/* not supported in views yet
 				foreach ( ParameterSchema param in command.AllOutputParameters )
 				{
-					string unique = GetCustomVariableName(param.Name + GetPropertyName(command.Name));
+					string unique = GetCustomVariableName(param.Name + GetPropertyName(command));
 					if( !columns.Contains(unique) )
 					{
 						columns.Add(unique);
@@ -452,13 +465,13 @@ private string WriteParameterDeclarations(IDictionary procs)
 private void WriteParameterDeclaration(ParameterSchema param, StringBuilder sb, bool useDefaultValue)
 {
 	sb.AppendFormat("\t\t\t{1} {0};{2}",
-					GetCustomVariableName(param.Name + GetPropertyName(param.Command.Name)),
+					GetCustomVariableName(param.Name, param.Command),
 					GetCSType(param),
 					(useDefaultValue ? string.Format(" = {0}", GetCSDefaultByType(param)) : ""),
 					Environment.NewLine);
 }
 
-private string WriteCustomSelectStatements(string tableName, IList methods, bool isServiceLayer)
+private string WriteCustomSelectStatements(ViewSchema view, IList methods, bool isServiceLayer)
 {
 	IDictionary procs = GetCustomProcedures(SourceView);
 	StringBuilder sb = new StringBuilder();
@@ -479,10 +492,10 @@ private string WriteCustomSelectStatements(string tableName, IList methods, bool
 //			methodParams = TransformStoredProcedureInputsToDataAccess(!isServiceLayer, command.InputParameters, true) + TransformStoredProcedureOutputsToDataAccess(command.InputParameters.Count > 0, command.AllOutputParameters, true);
 			methodParams = TransformStoredProcedureInputsToDataAccess(!isServiceLayer, command.InputParameters, true);
 			methods.Add(methodName);
-			sb.Append(WriteCaseStatement(tableName, methodName, false));
-			sb.Append(WriteParameterStatements(command.InputParameters, tableName));
+			sb.Append(WriteCaseStatement(view, methodName, false));
+			sb.Append(WriteParameterStatements(command.InputParameters, view.Name));
 			sb.AppendFormat("\t\t\t\t\tresults = {0}.{1}({2}{3}{4}{5});{6}",
-							GetProviderName(tableName),
+							GetClassName(view, ClassNameFormat.Provider),
 							methodName,
 							TransactionManager,
 							(isServiceLayer ? methodParams : pagingParams),
@@ -505,16 +518,16 @@ private string WriteParameterStatements(ParameterSchemaCollection parameters, st
 		if ( param.AllowDBNull )
 		{
 			sb.AppendFormat("\t\t\t\t\t{0} = ({2}) EntityUtil.ChangeType(values[\"{1}\"], typeof({2}));{3}",
-							GetCustomVariableName(param.Name + GetPropertyName(param.Command.Name)),
-							GetPropertyName(param.Name),
+							GetCustomVariableName(param.Name, param.Command),
+							GetPropertyName(param),
 							GetCSType(param),
 							Environment.NewLine);
 		}
 		else
 		{
 			sb.AppendFormat("\t\t\t\t\t{0} = ( values[\"{1}\"] != null ) ? ({2}) EntityUtil.ChangeType(values[\"{1}\"], typeof({2})) : {3};{4}",
-							GetCustomVariableName(param.Name + GetPropertyName(param.Command.Name)),
-							GetPropertyName(param.Name),
+							GetCustomVariableName(param.Name , param.Command),
+							GetPropertyName(param),
 							GetCSType(param),
 							GetCSDefaultByType(param),
 							Environment.NewLine);
@@ -523,16 +536,16 @@ private string WriteParameterStatements(ParameterSchemaCollection parameters, st
 	return sb.ToString();
 }
 
-private string WriteCaseStatement(string tableName, string methodName)
+private string WriteCaseStatement(ViewSchema view, string methodName)
 {
-	return WriteCaseStatement(tableName, methodName, true);
+	return WriteCaseStatement(view, methodName, true);
 }
 
-private string WriteCaseStatement(string tableName, string methodName, bool includeGetBy)
+private string WriteCaseStatement(ViewSchema view, string methodName, bool includeGetBy)
 {
 	StringBuilder sb = new StringBuilder();
 	sb.AppendFormat("\t\t\t\tcase {0}SelectMethod.{1}{2}:{3}",
-					GetClassName(tableName),
+					GetClassName(view),
 					(includeGetBy ? "GetBy" : ""),
 					methodName,
 					Environment.NewLine);

@@ -1,4 +1,4 @@
-<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Debug="False" Description="Generates the CustomDataSource type." %>
+﻿<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Debug="False" Description="Generates the CustomDataSource type." ResponseEncoding="UTF-8"  NoWarn="0108,0618,1572,1573,1574,0162,2002" %>
 <%@ Property Name="BLLNameSpace" Optional="False" Type="System.String" Category="Style" Description="Object Namespace." %>
 <%@ Property Name="DALNameSpace" Optional="False" Type="System.String" Category="Style" Description="DAL Namespace." %>
 <%@ Property Name="WebNameSpace" Optional="False" Type="System.String" Category="Style" Description="Web Namespace." %>
@@ -186,7 +186,7 @@ namespace <%= WebNameSpace %>.Data
 		/// </summary>
 		public String SelectMethod
 		{
-			get { return ((String) ViewState["SelectMethod"]) ?? "GetAll"; }
+			get { return ((String) ViewState["SelectMethod"]) ?? "<%= MethodNames.GetAll %>"; }
 			set { ViewState["SelectMethod"] = value; }
 		}
 
@@ -196,7 +196,7 @@ namespace <%= WebNameSpace %>.Data
 		/// </summary>
 		public String InsertMethod
 		{
-			get { return ((String) ViewState["InsertMethod"]) ?? "Insert"; }
+			get { return ((String) ViewState["InsertMethod"]) ?? "<%= MethodNames.Insert %>"; }
 			set { ViewState["InsertMethod"] = value; }
 		}
 
@@ -206,7 +206,7 @@ namespace <%= WebNameSpace %>.Data
 		/// </summary>
 		public String UpdateMethod
 		{
-			get { return ((String) ViewState["UpdateMethod"]) ?? "Update"; }
+			get { return ((String) ViewState["UpdateMethod"]) ?? "<%= MethodNames.Update %>"; }
 			set { ViewState["UpdateMethod"] = value; }
 		}
 
@@ -216,7 +216,7 @@ namespace <%= WebNameSpace %>.Data
 		/// </summary>
 		public String DeleteMethod
 		{
-			get { return ((String) ViewState["DeleteMethod"]) ?? "Delete"; }
+			get { return ((String) ViewState["DeleteMethod"]) ?? "<%= MethodNames.Delete %>"; }
 			set { ViewState["DeleteMethod"] = value; }
 		}
 
@@ -792,7 +792,7 @@ namespace <%= WebNameSpace %>.Data
 		/// <returns>An array of method arguments.</returns>
 		private Object[] GetArgs(params Object[] args)
 		{
-			TransactionManager mgr = GetTransactionManager();
+			ITransactionManager mgr = GetTransactionManager();
 
 			if ( mgr != null )
 			{
@@ -821,7 +821,7 @@ namespace <%= WebNameSpace %>.Data
 			if ( GetTransactionManager() != null )
 			{
 				Type[] newTypes = new Type[types.Length + 1];
-				newTypes[0] = typeof(TransactionManager);
+				newTypes[0] = typeof(ITransactionManager);
 
 				if ( types.Length > 0 )
 				{
@@ -848,7 +848,7 @@ namespace <%= WebNameSpace %>.Data
 				if ( entity != null )
 				{
 					Object[] args = GetArgs(entity, EnableRecursiveDeepLoad);
-					EntityUtil.InvokeMethod(Provider, "DeepLoad", args);
+					EntityUtil.InvokeMethod(Provider, "<%= MethodNames.DeepLoad %>", args);
 					IsDeepLoaded = true;
 				}
 			}

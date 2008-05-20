@@ -1,4 +1,4 @@
-<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Debug="False" Description="Generates the BaseDataSource type." %>
+<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Debug="False" Description="Generates the BaseDataSource type." ResponseEncoding="UTF-8"  NoWarn="0108,0618,1572,1573,1574,0162,2002" %>
 <%@ Property Name="BLLNameSpace" Optional="False" Type="System.String" Category="Style" Description="Object Namespace." %>
 <%@ Property Name="DALNameSpace" Optional="False" Type="System.String" Category="Style" Description="DAL Namespace." %>
 <%@ Property Name="WebNameSpace" Optional="False" Type="System.String" Category="Style" Description="Web Namespace." %>
@@ -15,6 +15,7 @@
 <%@ Property Name="IncludeManyToMany" Type="System.Boolean" Default="True" Category="CRUD Options" Description="If true select statements will be generated for any many to many relationship." %>
 <%@ Property Name="IncludeRelations" Type="System.Boolean" Default="True" Category="CRUD Options" Description="If true, the child collection relationships will be generated within your entities, if set to false, these child collections will not be generated, and Deep Load/Save will not be generated." %>
 <%@ Property Name="IncludeComponentLayer" Type="MoM.Templates.ComponentPatternType" Category="02. Framework Generation - Optional" Description="The pattern type to implement in the Component Layer." Default="None" %>
+<%@ Property Name="DataSourceEnableTransactionDefault" Type="System.Boolean" Default="true" Category="05. WebLibrary - Advanced" Description="Sets the default for the EnableTransaction property on the data source controls." %>
 
 <%@ Assembly Name="SchemaExplorer" %>
 <%@ Assembly Name="System.Design" %>
@@ -175,7 +176,7 @@ namespace <%= WebNameSpace %>.Data
 		/// the BaseDataSource.TransactionManager object will be the first
 		/// parameter passed to any data retrieval operation.</remarks>
 		[Browsable(false)]
-		public TransactionManager TransactionManager
+		public ITransactionManager TransactionManager
 		{
 			get { return View.TransactionManager; }
 			set { View.TransactionManager = value; }
@@ -402,7 +403,16 @@ namespace <%= WebNameSpace %>.Data
 		/// by the SelectMethod property.</returns>
 		public IList<Entity> Select(DataSourceSelectArguments arguments)
 		{
-			return View.Select(arguments);
+			if (this.DesignMode)
+			{
+				IList<Entity> list = new List<Entity>();
+				list.Add(new Entity());
+				return list;
+			}
+			else
+			{
+				return View.Select(arguments);
+			}
 		}
 
 		<% if ( IncludeInsert ) { %>
@@ -874,7 +884,7 @@ namespace <%= WebNameSpace %>.Data
 		#region Declarations
 
 		private BaseDataSource<Entity, EntityKey> _owner;
-		private TransactionManager _transactionManager;
+		private ITransactionManager _transactionManager;
 		private IList<Entity> _prevTempList;
 		private IList<Entity> _tempList;
 		private EntityKey _prevEntityId;
@@ -887,7 +897,7 @@ namespace <%= WebNameSpace %>.Data
 		private String _updateUserNames;
 		private String _convertNullToEmptyStringNames;
 		
-		private bool _enableTransaction = true;
+		private bool _enableTransaction = <%=DataSourceEnableTransactionDefault.ToString().ToLower()%>;
 		private bool _enableRecursiveDeepLoad;
 		private bool _enableCaching;
 		private bool _enablePaging;
@@ -928,7 +938,7 @@ namespace <%= WebNameSpace %>.Data
 		/// <remarks>When a value is supplied and EnableTransaction is set to false,
 		/// the BaseDataSource.TransactionManager object will be the first
 		/// parameter passed to any data retrieval operation.</remarks>
-		internal TransactionManager TransactionManager
+		internal ITransactionManager TransactionManager
 		{
 			get { return _transactionManager; }
 			set { _transactionManager = value; }
@@ -1325,13 +1335,13 @@ namespace <%= WebNameSpace %>.Data
 			{
 				OrderBy = (String) values["OrderBy"];
 			}
-			if ( values["PageIndex"] != null )
-			{
-				PageIndex = (int) values["PageIndex"];
-			}
 			if ( values["PageSize"] != null )
 			{
 				PageSize = (int) values["PageSize"];
+			}
+			if (values["PageIndex"] != null)
+			{
+				PageIndex = (int)values["PageIndex"];
 			}
 			if ( values["Parameters"] != null )
 			{
@@ -1414,7 +1424,7 @@ namespace <%= WebNameSpace %>.Data
 				_tempList = entityList;
 				_totalRowCount = count;
 
-				// TODO: how do we invalidate the cache before time expires?
+				<% // TODO: how do we invalidate the cache before time expires? %>
 			}
 
 			return entityList;
@@ -1605,7 +1615,8 @@ namespace <%= WebNameSpace %>.Data
 				return 0;
 			}
 
-			IList<Entity> entityList = GetEntityList();
+			IList<Entity> entityList = GetEntityList();		
+			
 			Entity entity = GetCurrentEntity(entityList, keys);
 			int count = 0;
 
@@ -2182,7 +2193,7 @@ namespace <%= WebNameSpace %>.Data
 		/// <returns>A <see cref="TransactionManager"/> object, or null.</returns>
 		protected virtual TransactionManager GetTransactionManager()
 		{
-			return EnableTransaction ? EntityTransactionModule.TransactionManager : TransactionManager;
+			return (TransactionManager)(EnableTransaction ? EntityTransactionModule.TransactionManager : TransactionManager);
 		}
 
 		/// <summary>

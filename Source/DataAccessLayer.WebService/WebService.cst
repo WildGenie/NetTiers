@@ -4,7 +4,7 @@
  * Last modified at $Date: 2006-04-09 01:11:17 -0500 (Sun, 09 Apr 2006) $
  * $Revision: 118 $
 --%>
-<%@ CodeTemplate Src="..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Language="C#" TargetLanguage="C#" Description="" Debug="True" ResponseEncoding="UTF-8"%>
+<%@ CodeTemplate Src="..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Language="C#" TargetLanguage="C#" Description="" Debug="True" ResponseEncoding="UTF-8"%>
 <%@ Assembly Name="SchemaExplorer" %>
 <%@ Assembly Name="System.Design" %>
 <%@ Import Namespace="SchemaExplorer" %>
@@ -15,7 +15,6 @@
 
 <%@ Property Name="IncludeCustoms" Type="System.Boolean" Default="True" Category="Options" Description="If true customs stored procedures will be generated as functions." %>
 <%@ Property Name="CustomNonMatchingReturnType" Type="CustomNonMatchingReturnType" Default="DataSet" Category="Options" Description="When using custom stored procedures, if the returned rows do not match the fields in an entity, a DataSet or IDataReader will be returned. Choose One.  This is useful if you've returned more than one resultset in a custom procedure; you can use a ConvertToDataSet(IDataReader) method in the Utility class to convert that to a DataSet." %>
-<%@ Property Name="ProcedurePrefix" Optional="True" Type="System.String" Category="Style" Description="Prefix for Strored Procedures" %>
 
 <%@ Property Name="IncludeInsert" Type="System.Boolean" Default="True" Category="Options" Description="If true insert functions will be generated." %>
 <%@ Property Name="IncludeUpdate" Type="System.Boolean" Default="True" Category="Options" Description="If true update functions will be generated." %>
@@ -65,12 +64,9 @@ public class <%=ClassName%> : WebService
 		//bool IsPkeyReadOnly = false;
 		
 		// Name of the table being worked on.
-		string name = SourceTable.Name;
-		string className = NameSpace + "." + GetClassName(SourceTable.Name);
-		string collectionClassName = NameSpace + "." + GetCollectionClassName(SourceTable.Name);
-				
-		string commandStem = GetCleanName(SourceTable.Name);
-		string providerName = GetProviderName(SourceTable.Name);
+		string className = NameSpace + "." + GetClassName(SourceTable);
+		string collectionClassName = NameSpace + "." + GetClassName(SourceTable, ClassNameFormat.Collection);
+		string providerName = GetClassName(SourceTable, ClassNameFormat.Provider);
 		
 		// Collection of all columns in the table.
 		ColumnSchemaCollection cols = SourceTable.Columns;
@@ -114,7 +110,7 @@ public class <%=ClassName%> : WebService
 	#region Get from  Many To Many Relationship Functions
 	<%
 		TableSchema primaryTable = SourceTable;
-		
+		System.Collections.Hashtable manyToManyFunctions = new System.Collections.Hashtable();
 		foreach(TableKeySchema key in SourceTable.PrimaryKeys)
 		{
 			// Check that the key is related to a junction table and that this key relate a PK in this junction table
@@ -128,14 +124,17 @@ public class <%=ClassName%> : WebService
 					if ( IsJunctionKey(junctionTableKey) && junctionTableKey.Name != key.Name )
 					{
 						TableSchema secondaryTable = junctionTableKey.PrimaryKeyTable;
-						string functionname = GetManyToManyName(junctionTableKey, GetCleanName(junctionTable.Name));
+						string functionname = GetManyToManyName(junctionTableKey, junctionTable);
 						methods.Add(providerName + "_GetBy" + functionname);
+						if (!manyToManyFunctions.ContainsKey(functionname))
+						{
+							manyToManyFunctions.Add(functionname,null);
 %>
 
 	#region GetBy<%=functionname%>
 		
 	[WebMethod(Description="Get rows from the table <%=SourceTable.Name%>, through the junction table <%=junctionTable.Name%>.")]
-	public <%=NameSpace + "." + GetCollectionClassName(primaryTable.Name)%> <%=providerName%>_GetBy<%=functionname%>(<%=GetFunctionHeaderParameters(junctionTableKey.ForeignKeyMemberColumns)%>, int start, int pageLength, out int count)
+	public <%=NameSpace + "." + GetClassName(primaryTable, ClassNameFormat.Collection)%> <%=providerName%>_GetBy<%=functionname%>(<%=GetFunctionHeaderParameters(junctionTableKey.ForeignKeyMemberColumns)%>, int start, int pageLength, out int count)
 	{		
 		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.GetBy<%=functionname%>(<%=GetFunctionCallParameters(junctionTableKey.ForeignKeyMemberColumns)%>, start, pageLength, out count);
 	}
@@ -143,6 +142,7 @@ public class <%=ClassName%> : WebService
 	#endregion GetBy<%=functionname%>
 	
 				<%
+					}//end if the function has already been created
 				} //end if there is many to many relationship.
 			} //end foreach			
 	 	}// end if(IsJunctionTable(junctionTableKeyForeignKeyTable)) %>
@@ -151,35 +151,33 @@ public class <%=ClassName%> : WebService
 	<% } %>
 	
 	<% if (IncludeDelete) {
-		methods.Add(providerName + "_Delete");
+		methods.Add(providerName + "_" + MethodNames.Delete);
 		%>
-	#region Delete Functions
-	
+	#region <%= MethodNames.Delete %> Functions
 		
 	/// <summary>
 	/// 	Deletes a row from the DataSource.
 	/// </summary>
 	<% for (int i = 0; i < keys.Count; i++) { %>
-	/// <param name="<%= keys[i].Name%>"><%= keys[i].Description%>. Primary Key.</param>	
+	/// <param name="<%= keys[i].Name%>"><%= GetColumnXmlComment(keys[i],1)%>. Primary Key.</param>	
 	<% } %>
 	/// <param name="transactionManager"><see cref="TransactionManager"/> object</param>
 	/// <param name="connectionString">Connection string to datasource.</param>
 	/// <remarks>Deletes based on primary key(s).</remarks>
 	/// <returns>Returns true if operation suceeded.</returns>
 	[WebMethod(Description="Delete a row from the table <%=SourceTable.Name%>.")]
-	public bool <%=providerName%>_Delete(<%= GetFunctionHeaderParameters(keys) %><% if(RowVersion != null) {Response.Write(", byte[] " + GetPrivateName(RowVersion.Name));}%>)
+	public bool <%=providerName%>_<%= MethodNames.Delete %>(<%= GetFunctionHeaderParameters(keys) %><% if(RowVersion != null) {Response.Write(", byte[] " + GetFieldName(RowVersion));}%>)
 	{
-		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.Delete(<%= GetFunctionCallParameters(keys) %><% if(RowVersion != null) {Response.Write(", " + GetPrivateName(RowVersion.Name));}%>);
-	}//end Delete
-		
+		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.Delete %>(<%= GetFunctionCallParameters(keys) %><% if(RowVersion != null) {Response.Write(", " + GetFieldName(RowVersion));}%>);
+	}
 	
 	#endregion
 	<% } %>
 	
 	<% if (IncludeFind) { 
-		methods.Add(providerName + "_Find");
+		methods.Add(providerName + "_" + MethodNames.Find);
 		%>
-	#region Find Functions
+	#region <%= MethodNames.Find %> Methods
 	
 	/// <summary>
 	/// 	Returns rows meeting the whereclause condition from the DataSource.
@@ -188,20 +186,20 @@ public class <%=ClassName%> : WebService
 	/// <remarks></remarks>
 	/// <returns>Returns a DataSet.</returns>
 	[WebMethod(Description="Get rows from the table <%=SourceTable.Name%> with additional query text.")]
-	public <%=collectionClassName%> <%=providerName%>_Find(string whereClause, int start, int pageLength, out int count)
+	public <%=collectionClassName%> <%=providerName%>_<%= MethodNames.Find %>(string whereClause, int start, int pageLength, out int count)
 	{
-		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.Find((TransactionManager) null, whereClause, start, pageLength, out count);
+		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.Find %>((TransactionManager) null, whereClause, start, pageLength, out count);
 	}
 	
-	#endregion Find Functions
+	#endregion <%= MethodNames.Find %> Methods
 	<% } %>
 	
 	
 	<% if (IncludeGetList) { 
-		methods.Add(providerName + "_GetAll");
-		methods.Add(providerName + "_GetPaged");
+		methods.Add(providerName + "_" + MethodNames.GetAll);
+		methods.Add(providerName + "_" + MethodNames.GetPaged);
 		%>
-	#region GetList Functions
+	#region <%= MethodNames.GetAll %> Methods
 		
 	/// <summary>
 	/// 	Gets All rows from the DataSource.
@@ -211,14 +209,14 @@ public class <%=ClassName%> : WebService
 	/// <param name="count">Number of rows in the DataSource.</param>
 	/// <returns>Returns a <s>DataSet</s>.</returns>
 	[WebMethod(Description="Get all rows from the table <%=SourceTable.Name%>.")]
-	public <%=collectionClassName%> <%=providerName%>_GetAll(int start, int pageLength, out int count)
+	public <%=collectionClassName%> <%=providerName%>_<%= MethodNames.GetAll %>(int start, int pageLength, out int count)
 	{
-		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.GetAll(start, pageLength, out count);		
+		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.GetAll %>(start, pageLength, out count);		
 	}
 	
 	#endregion
 	
-	#region Get Paged
+	#region <%= MethodNames.GetPaged %> Methods
 	
 	/// <summary>
 	/// Gets a page of rows from the DataSource.
@@ -231,9 +229,9 @@ public class <%=ClassName%> : WebService
 	/// <remarks></remarks>
 	/// <returns>Returns a typed collection of <%=ClassName%> objects.</returns>
 	[WebMethod(Description="Get all rows from the table <%=SourceTable.Name%>.")]
-	public <%=collectionClassName%> <%=providerName%>_GetPaged(string whereClause, string orderBy, int start, int pageLength, out int count)
+	public <%=collectionClassName%> <%=providerName%>_<%= MethodNames.GetPaged %>(string whereClause, string orderBy, int start, int pageLength, out int count)
 	{
-		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.GetPaged(whereClause, orderBy, start, pageLength, out count);
+		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.GetPaged %>(whereClause, orderBy, start, pageLength, out count);
 	}
 
 	#endregion
@@ -253,12 +251,12 @@ public class <%=ClassName%> : WebService
 	
 	/// <summary>
 	/// 	Gets rows from the datasource based on the <%=fkeys[j].Name%> key.
-	///		<%=fkeys[j].Name%> Description: <%=fkeys[j].Description%>
+	///		<%=fkeys[j].Name%> Description: <%=GetColumnXmlComment(fkeys[j],1)%>
 	/// </summary>
 	/// <param name="start">Row number at which to start reading.</param>
 	/// <param name="pagelen">Number of rows to return.</param>
 <% for (int i = 0; i < fkeys[j].ForeignKeyMemberColumns.Count; i++) { %>
-	/// <param name="<%= fkeys[j].ForeignKeyMemberColumns[i].Name%>"><%=fkeys[j].ForeignKeyMemberColumns[i].Description%></param>
+	/// <param name="<%= fkeys[j].ForeignKeyMemberColumns[i].Name%>"><%=GetColumnXmlComment(fkeys[j].ForeignKeyMemberColumns[i],1)%></param>
 <% } %>
 	/// <param name="count">out parameter to get total records for query</param>	
 	/// <remarks></remarks>
@@ -290,12 +288,10 @@ public class <%=ClassName%> : WebService
 			}
 			
 			string returnType = collectionClassName;
-			bool isUnique = false;
 			
 			if (indexes[j].IsUnique || indexes[j].IsPrimaryKey)
 			{
 				returnType = className;
-				isUnique = true;
 			}
 			
 			methods.Add(providerName + "_GetBy" + GetKeysName(indexes[j].MemberColumns));
@@ -308,7 +304,7 @@ public class <%=ClassName%> : WebService
 	/// <param name="start">Row number at which to start reading.</param>
 	/// <param name="pagelen">Number of rows to return.</param>
 <% for (int i = 0; i < indexes[j].MemberColumns.Count; i++) { %>
-	/// <param name="<%= indexes[j].MemberColumns[i].Name%>"><%= indexes[j].MemberColumns[i].Description%></param>
+	/// <param name="<%= indexes[j].MemberColumns[i].Name%>"><%= GetColumnXmlComment(indexes[j].MemberColumns[i],1)%></param>
 <% } %>
 	/// <param name="count">out parameter to get total records for query</param>	
 	/// <returns>Returns a DataSet.</returns>
@@ -324,9 +320,9 @@ public class <%=ClassName%> : WebService
 	<% } %>
 	
 	<% if (IncludeInsert) { 
-		methods.Add(providerName + "_Insert");
+		methods.Add(providerName + "_" + MethodNames.Insert);
 		%>
-	#region Insert Functions
+	#region <%= MethodNames.Insert %> Methods
 		
 	/// <summary>
 	/// 	Inserts an object into the datasource.
@@ -335,9 +331,9 @@ public class <%=ClassName%> : WebService
 	/// to refelect any changes made by the datasource. (ie: identity columns)</remarks>
 	/// <returns>Returns true if operation is successful.</returns>
 	[WebMethod(Description="Inserts a row in the table <%=SourceTable.Name%>.")]
-	public <%=className%> <%=providerName%>_Insert(<%=className%> entity )
+	public <%=className%> <%=providerName%>_<%= MethodNames.Insert %>(<%=className%> entity )
 	{
-		<%=DALNameSpace%>.DataRepository.<%=providerName%>.Insert(entity);
+		<%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.Insert %>(entity);
 		return entity;		
 	}
 	
@@ -350,17 +346,17 @@ public class <%=ClassName%> : WebService
 	/// </remarks>
 	/// <returns>Returns true if operation is successful.</returns>
 	[WebMethod(Description="Inserts a Bulk set of rows into the table <%=SourceTable.Name%>.")]
-	public void <%=providerName%>_BulkInsert(<%=collectionClassName%> entityList )
+	public void <%=providerName%>_<%= MethodNames.BulkInsert %>(<%=collectionClassName%> entityList )
 	{
-		<%=DALNameSpace%>.DataRepository.<%=providerName%>.BulkInsert(entityList);
+		<%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.BulkInsert %>(entityList);
 	}
-	#endregion Insert Functions
+	#endregion <%= MethodNames.Insert %> Methods
 	<% } %>
 			
 	<% if (IncludeUpdate) {
-		methods.Add(providerName + "_Update");
+		methods.Add(providerName + "_" + MethodNames.Update);
 		%>	
-	#region Update Functions
+	#region <%= MethodNames.Update %> Methods
 		
 	/// <summary>
 	/// 	Update an existing row in the datasource.
@@ -370,13 +366,13 @@ public class <%=ClassName%> : WebService
 	/// to refelect any changes made by the datasource. (ie: identity columns)</remarks>
 	/// <returns>Returns true if operation is successful.</returns>
 	[WebMethod(Description="Update a row in the table <%=SourceTable.Name%>.")]
-	public <%=className%> <%=providerName%>_Update(<%=className%> entity)
+	public <%=className%> <%=providerName%>_<%= MethodNames.Update %>(<%=className%> entity)
 	{
-		<%=DALNameSpace%>.DataRepository.<%=providerName%>.Update(entity);
+		<%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.Update %>(entity);
 		return entity;
 	}
 
-	#endregion Update Functions
+	#endregion <%= MethodNames.Update %> Methods
 	<% } %>
 
 	<% if (IncludeCustoms) { %>
@@ -410,7 +406,7 @@ public class <%=ClassName%> : WebService
 	    <% if (returnType == "DataSet") { %>
 		    <%= returnKeyword %> <% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %><%=DALNameSpace%>.Utility.ConvertDataReaderToDataSet(<%}%><%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters) + TransformStoredProcedureOutputsToDataAccess(true, command.AllOutputParameters)%>)<% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %>)<%}%>;
 	    <% } else { %>
-		    <%= returnKeyword %> <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters)%>);
+		    <%= returnKeyword %> <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters) + TransformStoredProcedureOutputsToDataAccess(true, command.AllOutputParameters) %>);
 	    <% } %>
 	}
 		
@@ -430,9 +426,9 @@ public class <%=ClassName%> : WebService
 	<% foreach(ViewSchema SourceView in SourceViews)
 	{
 		
-		string className = NameSpace + "." + GetClassName(SourceView.Name);
-		string providerName = GetProviderName(SourceView.Name);		
-		string collectionClassName = NameSpace + "." + GetViewCollectionClassName(SourceView.Name);
+		string className = NameSpace + "." + GetClassName(SourceView);
+		string providerName = GetClassName(SourceView, ClassNameFormat.Provider);		
+		string collectionClassName = NameSpace + "." + GetClassName(SourceView, ClassNameFormat.ViewCollection);
 		
 		methods.Add(providerName + "_Get");
 	 	%>
@@ -440,22 +436,22 @@ public class <%=ClassName%> : WebService
 	<% if (IncludeGetList) { 
 		methods.Add(providerName + "_GetAll");
 		%>
-	#region GetList Functions
+	#region <%= MethodNames.GetAll %> Methods
 		
 	/// <summary>
 	/// 	Gets All rows from the DataSource.
 	/// </summary>
 	/// <returns>Returns a <s>DataSet</s>.</returns>
 	[WebMethod(Description="Get all rows from the view <%=SourceView.Name%>.")]
-	public <%=collectionClassName%> <%=providerName%>_GetAll(int start, int pageLength)
+	public <%=collectionClassName%> <%=providerName%>_<%= MethodNames.GetAll %>(int start, int pageLength)
 	{
-		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.GetAll(start, pageLength);
+		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.GetAll %>(start, pageLength);
 	}
 	
-	#endregion
+	#endregion <%= MethodNames.GetAll %> Methods
 	<% } %>
 	
-	#region Get search
+	#region <%= MethodNames.Get %> Methods
 	
 	/// <summary>
 	/// Gets a page of rows from the DataSource.
@@ -465,12 +461,12 @@ public class <%=ClassName%> : WebService
 	/// <remarks></remarks>
 	/// <returns>Returns a typed collection of <%=ClassName%> objects.</returns>
 	[WebMethod(Description="Get all rows from the view <%=SourceView.Name%>.")]
-	public <%=collectionClassName%> <%=providerName%>_Get(string whereClause, string orderBy, int start, int pageLength)
+	public <%=collectionClassName%> <%=providerName%>_<%= MethodNames.Get %>(string whereClause, string orderBy, int start, int pageLength, out int count)
 	{
-		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.Get(whereClause.Length > 0 ? whereClause : null, orderBy.Length > 0 ? orderBy : null, start, pageLength);
+		return <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%= MethodNames.Get %>(whereClause.Length > 0 ? whereClause : null, orderBy.Length > 0 ? orderBy : null, start, pageLength, out count);
 	}
 
-	#endregion
+	#endregion <%= MethodNames.Get %> Methods
 	
 	<% if (IncludeCustoms) { %>
 	#region Custom Methods
@@ -484,8 +480,10 @@ public class <%=ClassName%> : WebService
 		string methodName  = item.Key.ToString();
 		
 		string uniqueMethodName = methodName;
+		
+		//can't duplicate method names in webservices
 		if (methods.Contains(providerName + "_" + methodName))
-			uniqueMethodName = methodName + "Custom";
+			continue;
 			
 		string returnType = GetReturnCustomProcReturnType(CustomNonMatchingReturnType, SourceView, command);
 		string returnKeyword = returnType == "void" ? "" : "return ";
@@ -500,18 +498,17 @@ public class <%=ClassName%> : WebService
 	public <%=returnType%> <%=providerName%>_<%=methodName%>(int start, int pageLength <%=TransformStoredProcedureInputsToMethod(true, command.InputParameters)%>)
 	{
 		<% if (returnType == "DataSet") { %>
-		    <%= returnKeyword %> <% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %><%=DALNameSpace%>.Utility.ConvertDataReaderToDataSet(<%}%><%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters) + TransformStoredProcedureOutputsToDataAccess(true, command.AllOutputParameters)%>)<% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %>)<%}%>;
+		    //<%= returnKeyword %> <% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %><%=DALNameSpace%>.Utility.ConvertDataReaderToDataSet(<%}%><%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters) + TransformStoredProcedureOutputsToDataAccess(true, command.AllOutputParameters)%>)<% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %>)<%}%>;
+		    <%= returnKeyword %> <% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %><%=DALNameSpace%>.Utility.ConvertDataReaderToDataSet(<%}%><%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters) %>)<% if (CustomNonMatchingReturnType.ToString() == "IDataReader" ) { %>)<%}%>;
 	    <% } else { %>
 			<%= returnKeyword %> <%=DALNameSpace%>.DataRepository.<%=providerName%>.<%=methodName%>(start, pageLength <%=TransformStoredProcedureInputsToDataAccess(true, command.InputParameters)%>);
 		<% } %>
 		
 	}
-		
-	
 <%
 	}	// foreach command
 %>
-	
+
 	#endregion
 	<% } %>
 	

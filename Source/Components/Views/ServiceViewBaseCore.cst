@@ -8,7 +8,7 @@
 		the same table. You can also optionally use the main script which will run them all
 		for you.
 --%>
-<%@ CodeTemplate Src="..\..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Language="C#" TargetLanguage="C#" Description="The interface that each business object of the domain implements."%>
+<%@ CodeTemplate Src="..\..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Language="C#" TargetLanguage="C#" Description="The interface that each business object of the domain implements." ResponseEncoding="UTF-8" NoWarn="0108,0618,1572,1573,1574,0162,2002"%>
 <%@ Assembly Name="SchemaExplorer" %>
 <%@ Import Namespace="SchemaExplorer" %>
 <%@ Assembly Name="System.Design" %>
@@ -23,17 +23,24 @@
 <%@ Property Name="IncludeGetListByFK" Type="System.Boolean" Default="True" Category="Options" Description="If true get functions will be generated." %>
 <%@ Property Name="IncludeGetListByIX" Type="System.Boolean" Default="True" Category="Options" Description="If true getlist functions will be generated." %>
 <%@ Property Name="IncludeFind" Type="System.Boolean" Default="True" Category="Options" Description="If true find functions will be generated." %>
+<%@ Property Name="ValidationType" Type="MoM.Templates.ValidationType" Default="NetTiers" Category="02. Framework Generation - Optional" Description="Choice to either use .netTiers validation framework, or Enterprise Library VAB" %>
 
 <%@ Property Name="NameSpace" Optional="False" Type="System.String" Category="Style" Description="Object Namespace." %>
 <%@ Property Name="BLLNameSpace" Optional="False" Type="System.String" Category="Style" Description="BLL Object Namespace." %>
 <%@ Property Name="DALNameSpace" Optional="False" Type="System.String" Category="Style" Description="DAL Object Namespace." %>
 <%@ Assembly Name="SchemaExplorer" %>
+<%
+	string vListName = GetVListName();
+%>
 #region Using Directives
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+<% if(ValidationType == MoM.Templates.ValidationType.EntLib){%>
+using Microsoft.Practices.EnterpriseLibrary.Validation;
+<%}%>
 using <%=BLLNameSpace%>;
 using <%=BLLNameSpace%>.Validation;
 using <%=DALNameSpace%>;
@@ -110,8 +117,14 @@ namespace <%=NameSpace%>
 					result.ProcessorResultList.Add(processResult);
 	
 					//Add To Aggregated Broken Rules List
+					<% if(ValidationType == MoM.Templates.ValidationType.NetTiers){%>
  					foreach(BrokenRulesList list in processResult.BrokenRulesLists.Values)
-                        result.ProcessBrokenRuleLists.Add((ProcessorBase)ProcessorList[i], list);				
+                        result.ProcessBrokenRuleLists.Add((ProcessorBase)ProcessorList[i], list);
+					<%}%>
+					<% if(ValidationType == MoM.Templates.ValidationType.EntLib){%>
+					foreach(ValidationResults results in processResult.BrokenRulesLists.Values)
+						result.ProcessBrokenRuleLists.Add((ProcessorBase)ProcessorList[i], results);
+					<%}%>
 				}
 				
 				//Fire Process Ending Event
@@ -242,16 +255,16 @@ namespace <%=NameSpace%>
 
 		#region IEntityViewProvider Implementation
 		
-        #region Get Methods
+        #region <%= MethodNames.Get %> Methods
 
         /// <summary>
         /// Gets a page of rows from the DataSource.
         /// </summary>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-        public virtual VList<Entity> Get()
+        public virtual <%=vListName%><Entity> <%= MethodNames.Get %>()
         {
-            return Get(null, null, 0, int.MaxValue);
+            return <%= MethodNames.Get %>(null, null, 0, int.MaxValue);
         }
 
         /// <summary>
@@ -261,9 +274,9 @@ namespace <%=NameSpace%>
         /// <param name="pageLength">Number of rows to return.</param>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-        public virtual VList<Entity> Get(int start, int pageLength)
+        public virtual <%=vListName%><Entity> <%= MethodNames.Get %>(int start, int pageLength)
         {
-            return Get(null, null, start, pageLength);
+            return <%= MethodNames.Get %>(null, null, start, pageLength);
         }
 
         /// <summary>
@@ -274,9 +287,9 @@ namespace <%=NameSpace%>
         /// <param name="count">The total number of rows in the data source.</param>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-        public virtual VList<Entity> Get(int start, int pageLength, out int count)
+        public virtual <%=vListName%><Entity> <%= MethodNames.Get %>(int start, int pageLength, out int count)
         {
-            return Get(null, null, start, pageLength, out count);
+            return <%= MethodNames.Get %>(null, null, start, pageLength, out count);
         }
 
         /// <summary>
@@ -286,9 +299,9 @@ namespace <%=NameSpace%>
         /// <param name="orderBy">Specifies the sort criteria for the rows in the DataSource (Name ASC; BirthDay DESC, Name ASC);</param>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-        public virtual VList<Entity> Get(string whereClause, string orderBy)
+        public virtual <%=vListName%><Entity> <%= MethodNames.Get %>(string whereClause, string orderBy)
         {
-            return Get(whereClause, orderBy, 0, int.MaxValue);
+            return <%= MethodNames.Get %>(whereClause, orderBy, 0, int.MaxValue);
         }
 
 
@@ -301,10 +314,10 @@ namespace <%=NameSpace%>
         /// <param name="pageLength">Number of rows to return.</param>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-        public virtual VList<Entity> Get(string whereClause, string orderBy, int start, int pageLength)
+        public virtual <%=vListName%><Entity> <%= MethodNames.Get %>(string whereClause, string orderBy, int start, int pageLength)
         {
             int count;
-            return Get(whereClause, orderBy, start, pageLength, out count);
+            return <%= MethodNames.Get %>(whereClause, orderBy, start, pageLength, out count);
         }
 
         /// <summary>
@@ -317,11 +330,11 @@ namespace <%=NameSpace%>
         /// <param name="count">The total number of rows in the data source.</param>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-        public abstract VList<Entity> Get(string whereClause, string orderBy, int start, int pageLength, out int count);
+        public abstract <%=vListName%><Entity> <%= MethodNames.Get %>(string whereClause, string orderBy, int start, int pageLength, out int count);
 
-        #endregion Get Methods
+        #endregion <%= MethodNames.Get %> Methods
 		
-		#region GetAll Methods
+		#region <%= MethodNames.GetAll %> Methods
 
         /// <summary>
         /// Gets All rows from the DataSource.
@@ -331,14 +344,14 @@ namespace <%=NameSpace%>
         /// <param name="count">The total number of rows in the data source.</param>
         /// <remarks></remarks>
         /// <returns>Returns a typed collection of Entity objects.</returns>
-       	public virtual VList<Entity> GetAll(int start, int pageLength, out int count)
+       	public virtual <%=vListName%><Entity> <%= MethodNames.GetAll %>(int start, int pageLength, out int count)
 		{
 			throw new NotImplementedException();
 		}
 
-		#endregion
+		#endregion <%= MethodNames.GetAll %> Methods
 
-		#region GetPaged Methods
+		#region <%= MethodNames.GetPaged %> Methods
 
 		/// <summary>
         /// Gets a page of rows from the DataSource.
@@ -348,15 +361,15 @@ namespace <%=NameSpace%>
         /// <param name="start">Row number at which to start reading.</param>
         /// <param name="pageLength">Number of rows to return.</param>
         /// <param name="count">Number of rows in the DataSource.</param>
-        /// <returns>Returns a VList of Entity objects.</returns>
-        public virtual VList<Entity> GetPaged(String whereClause, String orderBy, int start, int pageLength, out int count)
+        /// <returns>Returns a <%=vListName%> of Entity objects.</returns>
+        public virtual <%=vListName%><Entity> <%= MethodNames.GetPaged %>(String whereClause, String orderBy, int start, int pageLength, out int count)
         {
             throw new NotImplementedException();
         }
 
-		#endregion
+		#endregion <%= MethodNames.GetPaged %> Methods
 
-		#region Find Methods
+		#region <%= MethodNames.Find %> Methods
 		
 		/// <summary>
 		/// Returns rows from the DataSource that meet the parameter conditions.
@@ -367,12 +380,12 @@ namespace <%=NameSpace%>
 		/// <param name="pageLength">Number of rows to return.</param>
 		/// <param name="count">out. The number of rows that match this query.</param>
 		/// <returns>Returns a typed collection of Entity objects.</returns>
-		public virtual VList<Entity> Find(SqlFilterParameterCollection parameters, string orderBy, int start, int pageLength, out int count)
+		public virtual <%=vListName%><Entity> <%= MethodNames.Find %>(IFilterParameterCollection parameters, string orderBy, int start, int pageLength, out int count)
 		{
 			throw new NotImplementedException();
 		}
 		
-		#endregion Find Methods
+		#endregion <%= MethodNames.Find %> Methods
 
 		#endregion IEntityViewProvider Implementation
 	}

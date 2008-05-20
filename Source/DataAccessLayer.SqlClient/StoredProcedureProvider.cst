@@ -1,4 +1,4 @@
-<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Description="" %>
+﻿<%@ CodeTemplate Language="C#" TargetLanguage="C#" Src="..\TemplateLib\CommonSqlCode.cs" Inherits="MoM.Templates.CommonSqlCode" Description="" ResponseEncoding="UTF-8"  NoWarn="0108,0618,1572,1573,1574,0162,2002"%>
 
 <%@ Property Name="BLLNameSpace" Type="System.String" Category="Data" Description="BLL Namespace." %>
 <%@ Property Name="DALNameSpace" Type="System.String" Category="Data" Description="DAL Namespace." %>
@@ -28,8 +28,11 @@ namespace <%=DALNameSpace%>.SqlClient
 	public sealed class StoredProcedureProvider
 	{
 		private ArrayList procedures;
+		private Hashtable shortNameProcedures;
+		private Hashtable longNameProcedures;
 		private static StoredProcedureProvider current = null;
-
+		private static object syncRoot = new object();
+		
 		/// <summary>
 		/// Creates a new <see cref="StoredProcedureProvider"/> instance.
 		/// </summary>
@@ -48,7 +51,7 @@ namespace <%=DALNameSpace%>.SqlClient
 			{
 				if (current == null)
 				{
-					lock(typeof(StoredProcedureProvider))
+					lock(syncRoot)
 					{
 						if (current == null)
 						{
@@ -75,6 +78,7 @@ namespace <%=DALNameSpace%>.SqlClient
 			set
 			{
 				procedures = value;
+				InitializeProcedureLookupTables();
 			}
 		}
 
@@ -87,14 +91,20 @@ namespace <%=DALNameSpace%>.SqlClient
 		{
 			get
 			{
-				foreach(Procedure procedure in procedures)
+				lock(syncRoot)
 				{
-					if(procedure.Name == name || procedure.Owner + "." + procedure.Name == name)
-					{
-						return procedure;
-					}
+					if (longNameProcedures == null)
+						InitializeProcedureLookupTables();
 				}
-				return null;
+				
+				Procedure result = null;
+				
+				result = longNameProcedures[name] as Procedure;
+				if (result == null)
+				{
+					result = shortNameProcedures[name] as Procedure;
+				}
+				return result;
 			}
 		}
 		
@@ -148,7 +158,7 @@ namespace <%=DALNameSpace%>.SqlClient
 
 		#endregion
 		
-		#region "Embedded xml queries"
+		#region Embedded XML Queries
 		
 		/// <summary>
 	    /// Get the query text from the embedded xml file.
@@ -176,12 +186,17 @@ namespace <%=DALNameSpace%>.SqlClient
 		{
 			if (useStoredProcedure)
 			{
-				return database.GetStoredProcCommand(commandName);
+				DbCommand command = database.GetStoredProcCommand(commandName);
+                command.CommandTimeout = DataRepository.Provider.DefaultCommandTimeout;
+                return command;
 			}
 			else
 			{
-				return database.GetSqlStringCommand(StoredProcedureProvider.GetProcedureBodyFromEmbeddedResource(commandName));
-			}
+                DbCommand command = 
+                    database.GetSqlStringCommand(StoredProcedureProvider.GetProcedureBodyFromEmbeddedResource(commandName));
+                command.CommandTimeout = DataRepository.Provider.DefaultCommandTimeout;
+                return command; 
+            }
 		}
 
 		/// <summary>
@@ -199,6 +214,7 @@ namespace <%=DALNameSpace%>.SqlClient
 		public static DbCommand GetCommandWrapper(Database database, String commandName, Type columnEnum, SqlFilterParameterCollection parameters, String orderBy, int start, int pageLength)
 		{
 			String query = StoredProcedureProvider.GetProcedureBodyFromEmbeddedResource(commandName);
+			//query = query.Replace(SqlUtil.PAGE_INDEX, string.Concat(SqlUtil.PAGE_INDEX, Guid.NewGuid().ToString("N").Substring(0,8)));
 			String sortExpression = Utility.ParseSortExpression(columnEnum, orderBy);
 			String whereClause = String.Empty;
 
@@ -210,10 +226,28 @@ namespace <%=DALNameSpace%>.SqlClient
 			// replace dynamic components
 			query = String.Format(query, whereClause, sortExpression, start, (start + pageLength)); 
 
-			return database.GetSqlStringCommand(query);
+            DbCommand command = database.GetSqlStringCommand(query);
+            command.CommandTimeout = DataRepository.Provider.DefaultCommandTimeout;
+            return command; 
 		}
 		
 		#endregion
+		
+		private void InitializeProcedureLookupTables()
+		{
+			lock (syncRoot)
+            {
+	
+				shortNameProcedures = Hashtable.Synchronized(new Hashtable());
+				longNameProcedures = Hashtable.Synchronized(new Hashtable());
+	
+				foreach (Procedure procedure in procedures)
+				{
+					shortNameProcedures[procedure.Name] = procedure;
+					longNameProcedures[procedure.Owner + "." + procedure.Name] = procedure;
+				}
+			}
+		}
 	}
 
 	/// <summary>
